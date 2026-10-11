@@ -1,0 +1,159 @@
+"""Run the reproducible Monte Carlo experiment and save its figures and data."""
+
+from __future__ import annotations
+
+import argparse
+import csv
+import pathlib
+
+import jax
+import jax.numpy as jnp
+import matplotlib
+
+matplotlib.use("Agg")
+import matplotlib.pyplot as plt
+import numpy as np
+
+from greeks import (
+    Option,
+    black_scholes_price_delta_gamma,
+    delta_autodiff,
+    delta_common_noise,
+    delta_fresh_noise,
+    gamma_finite_difference_delta,
+    gamma_likelihood_ratio,
+    gamma_naive_autodiff,
+    gamma_smoothed_autodiff,
+    price_mc,
+)
+
+ROOT = pathlib.Path(__file__).resolve().parents[1]
+RESULTS = ROOT / "results"
+SEED = 2026
+
+
+def run(num_paths: int = 200_000) -> None:
+    if num_paths < 2:
+        raise ValueError("num_paths must be at least 2")
+
+    RESULTS.mkdir(exist_ok=True)
+    option = Option()
+    key = jax.random.PRNGKey(SEED)
+    keys = jax.random.split(key, 2 * 14 + 2)
+    z_price = jax.random.normal(keys[0], (num_paths,), dtype=jnp.float64)
+    z_gamma = jax.random.normal(keys[1], (num_paths,), dtype=jnp.float64)
+    exact_price, exact_delta, exact_gamma = black_scholes_price_delta_gamma(option)
+
+    price = price_mc(option.spot, z_price, option)
+    autodiff = delta_autodiff(option.spot, z_price, option)
+    bumps = np.geomspace(0.05, 30.0, 14)
+    rows: list[dict[str, float | str]] = []
+
+    for index, bump in enumerate(bumps):
+        z_up = jax.random.normal(keys[2 + 2 * index], (num_paths,), dtype=jnp.float64)
+        z_down = jax.random.normal(keys[3 + 2 * index], (num_paths,), dtype=jnp.float64)
+        fresh = delta_fresh_noise(option.spot, float(bump), z_up, z_down, option)
+        common = delta_common_noise(option.spot, float(bump), z_price, option)
+        for method, estimate in (
+            ("fresh noise", fresh),
+            ("common noise", common),
+            ("autodiff", autodiff),
+        ):
+            rows.append(
+                {
+                    "method": method,
+                    "bump": float(bump),
+                    "estimate": estimate.value,
+                    "absolute_error": abs(estimate.value - exact_delta),
+                    "standard_error": estimate.standard_error,
+                }
+            )
+
+    with (RESULTS / "delta_estimates.csv").open("w", newline="") as file:
+        writer = csv.DictWriter(
+            file, fieldnames=("method", "bump", "estimate", "absolute_error", "standard_error")
+        )
+        writer.writeheader()
+        writer.writerows(rows)
+
+    fig, ax = plt.subplots(figsize=(8.5, 5.2), layout="constrained")
+    colors = {"fresh noise": "#ef4444", "common noise": "#2563eb", "autodiff": "#10b981"}
+    for method in ("fresh noise", "common noise", "autodiff"):
+        method_rows = [row for row in rows if row["method"] == method]
+        ax.loglog(
+            [row["bump"] for row in method_rows],
+            [max(row["absolute_error"], 1e-8) for row in method_rows],
+            marker="o" if method != "autodiff" else None,
+            linewidth=2,
+            color=colors[method],
+            label=method,
+        )
+    ax.set(
+        xlabel="Central bump size h ($)",
+        ylabel="Absolute delta error",
+        title=f"Monte Carlo call delta: bias versus simulation noise ({num_paths:,} paths)",
+    )
+    ax.grid(True, which="both", linestyle="--", alpha=0.35)
+    ax.legend()
+    fig.savefig(RESULTS / "delta_error.png", dpi=180)
+    plt.close(fig)
+
+    gamma_estimates = (
+        ("naive pathwise autodiff", gamma_naive_autodiff(option.spot, z_gamma, option)),
+        ("likelihood ratio", gamma_likelihood_ratio(option.spot, z_gamma, option)),
+        ("softplus autodiff (tau=0.5)", gamma_smoothed_autodiff(option.spot, z_gamma, option, 0.5)),
+        ("finite difference of delta (h=0.5)", gamma_finite_difference_delta(option.spot, 0.5, z_gamma, option)),
+    )
+    summary_rows = [
+        {
+            "greek": "price",
+            "method": "Monte Carlo",
+            "estimate": price.value,
+            "black_scholes": exact_price,
+            "absolute_error": abs(price.value - exact_price),
+            "standard_error": price.standard_error,
+        },
+        {
+            "greek": "delta",
+            "method": "autodiff",
+            "estimate": autodiff.value,
+            "black_scholes": exact_delta,
+            "absolute_error": abs(autodiff.value - exact_delta),
+            "standard_error": autodiff.standard_error,
+        },
+    ]
+    summary_rows.extend(
+        {
+            "greek": "gamma",
+            "method": label,
+            "estimate": estimate.value,
+            "black_scholes": exact_gamma,
+            "absolute_error": abs(estimate.value - exact_gamma),
+            "standard_error": estimate.standard_error,
+        }
+        for label, estimate in gamma_estimates
+    )
+    with (RESULTS / "greek_estimates.csv").open("w", newline="") as file:
+        writer = csv.DictWriter(file, fieldnames=summary_rows[0].keys())
+        writer.writeheader()
+        writer.writerows(summary_rows)
+
+    print(f"Black-Scholes price={exact_price:.6f}, delta={exact_delta:.6f}, gamma={exact_gamma:.6f}")
+    print(f"Monte Carlo price={price.value:.6f} (SE {price.standard_error:.6f})")
+    print(f"Autodiff delta={autodiff.value:.6f} (SE {autodiff.standard_error:.6f})")
+    print("\nGamma estimates:")
+    for label, estimate in gamma_estimates:
+        print(
+            f"  {label:38s} {estimate.value:.6f} "
+            f"(SE {estimate.standard_error:.6f}, error {abs(estimate.value - exact_gamma):.6f})"
+        )
+    print(
+        f"\nWrote {RESULTS / 'delta_error.png'}, "
+        f"{RESULTS / 'delta_estimates.csv'}, and {RESULTS / 'greek_estimates.csv'}"
+    )
+
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--paths", type=int, default=200_000, help="Monte Carlo path count")
+    run(parser.parse_args().paths)
