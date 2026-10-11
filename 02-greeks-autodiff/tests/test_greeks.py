@@ -60,7 +60,7 @@ def test_gamma_fixes_match_black_scholes(sample, estimator):
     option, z = sample
     _, _, exact_gamma = black_scholes_price_delta_gamma(option)
     estimate = estimator(option.spot, z, option)
-    assert abs(estimate.value - exact_gamma) < max(4 * estimate.standard_error, 0.0015)
+    assert abs(estimate.value - exact_gamma) < 4 * estimate.standard_error
 
 
 def test_invalid_path_count_or_bump_raise(sample):
