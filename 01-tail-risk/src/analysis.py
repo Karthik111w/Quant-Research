@@ -78,6 +78,9 @@ def run_asset(
     ci_half   = hill_ci(best_alpha, best_k)
     alpha_lo  = alpha_at(ks, alphas, round(best_k * 0.8))   # sensitivity: k* − 20 %
     alpha_hi  = alpha_at(ks, alphas, round(best_k * 1.2))   # sensitivity: k* + 20 %
+    # Wider view: the Hill plot drifts down as k grows, so report α̂ at fixed
+    # shares of the sample too (1 %, 2 %, 5 % of all days).
+    alpha_by_share = {share: alpha_at(ks, alphas, round(share * n_days)) for share in (0.01, 0.02, 0.05)}
 
     # ── Weissman VaR (n = all days, so p is a per-day probability) ──────────
     wvar_99  = weissman_var(loss, best_alpha, best_k, target_prob=1 - CONFIDENCE_99)
@@ -104,6 +107,9 @@ def run_asset(
         "alpha_ci":             round(ci_half, 3),
         "alpha_k_minus_20":     round(alpha_lo, 3),
         "alpha_k_plus_20":      round(alpha_hi, 3),
+        "alpha_1pct":           round(alpha_by_share[0.01], 3),
+        "alpha_2pct":           round(alpha_by_share[0.02], 3),
+        "alpha_5pct":           round(alpha_by_share[0.05], 3),
         "best_k":               best_k,
         "periods_per_year":     ppy,
         "breaches_99":          n_breaches,
@@ -149,6 +155,9 @@ def main():
             "± CI":             r["alpha_ci"],
             "α̂ (k*−20%)":      r["alpha_k_minus_20"],
             "α̂ (k*+20%)":      r["alpha_k_plus_20"],
+            "α̂ (k=1% of n)":   r["alpha_1pct"],
+            "α̂ (k=2% of n)":   r["alpha_2pct"],
+            "α̂ (k=5% of n)":   r["alpha_5pct"],
             "k*":              r["best_k"],
             "Breaches/yr (obs)":r["breaches_per_year"],
             "Expected/yr":      r["expected_per_year"],
@@ -172,7 +181,7 @@ def main():
         print(table.to_string(index=False))
 
     table.to_csv(RESULTS_DIR / "summary_table.csv", index=False)
-    print(f"\nSaved → {RESULTS_DIR / 'summary_table.csv'}")
+    print(f"\nSaved → {(RESULTS_DIR / 'summary_table.csv').relative_to(ROOT)}")
 
     # ── Save breach details ───────────────────────────────────────────────────
     for ticker, r in results.items():

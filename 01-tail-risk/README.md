@@ -6,14 +6,14 @@
 
 ## Key result
 
-Daily losses on SPY, QQQ, AAPL, GLD and Bitcoin all have power-law tails with a Hill tail exponent of roughly **α̂ ≈ 2.7–3.6**. A Gaussian VaR fitted to the same data misses those tails badly:
+Daily losses on SPY, QQQ, AAPL, GLD and Bitcoin all have power-law tails. At the chosen k (√n ≈ 76 days) the Hill tail exponent is **α̂ ≈ 2.7–3.6**; the estimate depends on k and falls to about 2.3–2.8 if the 5% largest losses are used (§5). A Gaussian VaR fitted to the same data misses those tails badly:
 
 * A rolling 99% Gaussian VaR is breached **2–3× more often than it should be** (SPY: 7.1 breaches a year against 2.5 expected), and the Kupiec test rejects it for every asset.
-* At 99.9%, the full-sample Gaussian VaR was exceeded on **38–53 days** per asset over ~20 years, against about **5–6** expected. The Weissman (Pareto) estimate was exceeded on **2–6** days, in line with expectation.
-* For SPY the Gaussian puts the 1-in-1,000-day loss at **3.6%**; the Weissman estimate is **8.0%**, and the realised 99.9% quantile was **7.8%**.
+* At 99.9%, the full-sample Gaussian VaR was exceeded on **38–53 days** per asset over ~20 years, against about **4–6** expected. The Weissman (Pareto) estimate was exceeded on **2–6** days. Both are **in-sample** checks: each VaR is fitted to the same data it is checked against, which favours the Weissman match, so read it as a check of fit rather than a forecast test. The rolling 99% breach counts above are out-of-sample.
+* For SPY the Gaussian puts the 1-in-1,000-day loss at **3.6%**; the Weissman estimate is **8.0%**, and the realised 99.9% quantile was **7.8%** (all in-sample).
 
 ![Hill plots](results/hill_plots.png)
-![Breach heatmap](results/breach_heatmap.png)
+![Breach timeline](results/breach_timeline.png)
 ![VaR comparison](results/var_compare.png)
 
 ---
@@ -48,7 +48,7 @@ Daily losses on SPY, QQQ, AAPL, GLD and Bitcoin all have power-law tails with a 
 | Gold | GLD | Nov 2004 – Oct 2026 | 252 |
 | Bitcoin | BTC-USD | Sep 2014 – Oct 2026 | 365 (trades every day) |
 
-Prices are fetched once with `python src/fetch_data.py` and saved to `results/prices_raw.csv`. All downstream scripts read that file, so no internet is needed after the first run. The observations-per-year figure is inferred from the dates and used for the rolling window and for every per-year rate.
+Prices are fetched once with `python src/fetch_data.py` and saved to `results/prices_raw.csv` (not committed). The end date is pinned to 9 Oct 2026, so a fresh download reproduces the numbers below; `python src/fetch_data.py --latest` extends to today, and the results will then shift slightly. All downstream scripts read the CSV, so no internet is needed after the first run. The observations-per-year figure is inferred from the dates and used for the rolling window and for every per-year rate.
 
 ---
 
@@ -99,7 +99,19 @@ Small k gives a noisy estimate; large k lets ordinary, non-tail days pull it dow
 | 4.0 | 2.33 (1.67) | **3.45 (0.67)** | 3.28 (0.78) | 3.46 (0.88) |
 | 5.0 | 2.50 (2.51) | **3.97 (1.11)** | 3.74 (1.29) | 3.94 (1.29) |
 
-√n has the lowest error at α = 3, 4 and 5 and is close to the best at 2.5. Hill still reads somewhat low on Student-t data because its tail is only approximately Pareto; that bias is a property of the estimator, not of the k rule. The summary table also reports α̂ at k* ± 20%.
+√n has the lowest error at α = 3, 4 and 5 and is close to the best at 2.5. Hill still reads low on Student-t data because its tail is only approximately Pareto, and the bias grows with α: about 0.06 at α = 2.5, 0.17 at 3, 0.55 at 4 and 1.0 at 5 (√n column). That bias is a property of the estimator, not of the k rule.
+
+**The estimate depends on k.** On every asset the Hill plot slides from roughly 3–4 at small k to about 2 by k ≈ 600, so no single number is "the" tail exponent. The k* ± 20% check is narrow; the wider view below shows how far it moves:
+
+| Ticker | k = 1% of n | **k\* = √n** | k = 2% of n | k = 5% of n |
+|:-------|:----:|:----:|:----:|:----:|
+| SPY | 2.79 | **2.69** | 2.61 | 2.26 |
+| QQQ | 4.05 | **3.56** | 3.36 | 2.82 |
+| AAPL | 3.98 | **3.52** | 3.27 | 2.69 |
+| GLD | 3.26 | **3.44** | 3.22 | 2.74 |
+| BTC-USD | 3.86 | **3.18** | 2.90 | 2.49 |
+
+The conclusion that tails are power-law, far heavier than a Gaussian (whose tail decays faster than any power law), holds at every k; the exact value, and which moment band it falls in (§6), does not.
 
 ### 6  Interpreting α̂
 
@@ -153,9 +165,9 @@ VaR figures are 1-day log-losses. The Gaussian and Weissman columns here are ful
 ### Key observations
 
 1. **Gaussian VaR fails systematically.** The rolling 99% VaR is breached 2.0–2.8× more often than the nominal 1% (1.9× for Bitcoin, against its 365-day calendar). The Kupiec test rejects for every asset (p < 10⁻⁶).
-2. **The tail is a power law with α̂ around 3.** SPY's α̂ ≈ 2.7 sits near the boundary where skewness stops being finite; QQQ, AAPL, GLD and Bitcoin sit at 3.2–3.6, in the infinite-kurtosis range. Bitcoin's estimate is the least stable (3.96 to 2.87 across k*±20%) because its history is shortest.
+2. **The tail is a power law with α̂ around 3.** At k* SPY's α̂ ≈ 2.7 sits near the boundary where skewness stops being finite; QQQ, AAPL, GLD and Bitcoin sit at 3.2–3.6, in the infinite-kurtosis range. These bands depend on k (§5): at 5% of n every asset falls to 2.3–2.8. Bitcoin's estimate is the least stable (3.96 to 2.87 across k*±20%) because its history is shortest.
 3. **The gap is largest exactly where it matters.** At 99.9% the Gaussian is exceeded 7–9× more often than it should be. The Weissman estimate tracks the realised 99.9% quantile within about 0.2–3 percentage points and is exceeded about as often as expected.
-4. **Breaches cluster.** Over half of SPY's breaches (55%) come within 10 trading days of another breach; at SPY's 2.8% breach rate, independent breaches would cluster like that only about a quarter of the time. The worst years are spread across stress episodes: 2008 (20), 2022 (17), 2007 and 2018 (16 each) and 2020 (14). This contradicts the i.i.d. assumption behind both the Gaussian model and the Kupiec test.
+4. **Breaches cluster.** 55% of SPY's breaches come within the 10 trading days *after* an earlier breach, against 25% if breaches were independent at SPY's 2.8% rate. Counting both directions (another breach within 10 days before or after), it is 73% against 43%. The worst years are spread across stress episodes: 2008 (20), 2022 (17), 2007 and 2018 (16 each) and 2020 (14). This contradicts the i.i.d. assumption behind both the Gaussian model and the Kupiec test.
 
 ---
 
@@ -165,7 +177,7 @@ VaR figures are 1-day log-losses. The Gaussian and Weissman columns here are ful
 # 1. Install dependencies (first time only)
 pip install -r requirements.txt
 
-# 2. Download and cache data
+# 2. Download and cache data (pinned end date; add --latest for data through today)
 python src/fetch_data.py
 
 # 3. Run analysis → summary_table.csv + breach CSVs
@@ -185,11 +197,11 @@ python src/k_selection_study.py
 
 ## Limitations & extensions
 
-1. **k selection is a rule of thumb.** √n performed best of the rules tried on Student-t data, but no rule is right for every distribution. Sensitivity to k is reported via α̂ at k* ± 20%.
+1. **k selection is a rule of thumb.** √n performed best of the rules tried on Student-t data, but no rule is right for every distribution. Sensitivity to k is reported via α̂ at k* ± 20% and at 1%, 2% and 5% of n (§5); across that range the exponent moves by up to about 1.2.
 
 2. **Hill assumes i.i.d. observations.** Real returns cluster in volatility (GARCH effects), which biases the estimator and its standard error. A natural extension: filter returns through a GARCH(1,1) model and apply Hill to the standardised residuals.
 
-3. **Power-law tail assumption.** Hill is exact only for Pareto tails. When the tail is power-law only asymptotically (as for Student-t), Hill is biased in finite samples; the simulation in §5 shows it reading roughly 0.2–0.5 low.
+3. **Power-law tail assumption.** Hill is exact only for Pareto tails. When the tail is power-law only asymptotically (as for Student-t), Hill is biased low in finite samples, and more so the thinner the tail: in the §5 simulation, about 0.06 at α = 2.5, 0.17 at 3, 0.55 at 4 and 1.0 at 5.
 
 4. **The tail comparison is in-sample.** The Weissman and full-sample Gaussian VaRs are fitted on the same data they are checked against. A rolling, out-of-sample Weissman VaR would be the fair counterpart to the rolling Gaussian.
 

@@ -6,7 +6,7 @@ Generate every figure for the project and save them to results/.
 Figures produced
 ----------------
 hill_plots.png      — Hill plot grid (one panel per asset)
-breach_heatmap.png  — Calendar-dot breach heatmap, colour-coded by loss
+breach_timeline.png — Breach timeline per asset, colour-coded by loss
 var_compare.png     — Gaussian vs Weissman VaR comparison bar chart
 
 Run:
@@ -137,14 +137,14 @@ def plot_hill(results: dict, out_path: pathlib.Path) -> None:
     fig.tight_layout()
     fig.savefig(out_path, dpi=150, bbox_inches="tight", facecolor=BG)
     plt.close(fig)
-    print(f"Saved → {out_path}")
+    print(f"Saved → {out_path.relative_to(ROOT)}")
 
 
 # ─────────────────────────────────────────────────────────────────────────────
 # 2. Breach heatmap / calendar dots
 # ─────────────────────────────────────────────────────────────────────────────
 
-def plot_breach_heatmap(results: dict, out_path: pathlib.Path) -> None:
+def plot_breach_timeline(results: dict, out_path: pathlib.Path) -> None:
     """
     One row per asset.  Each breach is a dot at (year, day-of-year),
     coloured by loss magnitude (green → amber → red).
@@ -200,8 +200,16 @@ def plot_breach_heatmap(results: dict, out_path: pathlib.Path) -> None:
             )
 
         # Annotate crisis years
-        # Lehman collapse (15 Sep 2008) and the COVID crash (March 2020)
+        # Lehman collapse (15 Sep 2008) and the COVID crash (March 2020), only
+        # where the asset has data (Bitcoin starts in 2014).  Each panel spans
+        # its own VaR sample so short histories don't leave an empty half.
+        span = r["gvar_series"].dropna().index
+        x_lo = span[0].year + span[0].day_of_year / 365.25
+        x_hi = span[-1].year + span[-1].day_of_year / 365.25
+        ax.set_xlim(x_lo - 0.2, x_hi + 0.2)
         for crisis, label in [(pd.Timestamp("2008-09-15"), "GFC"), (pd.Timestamp("2020-03-01"), "COVID")]:
+            if not span[0] <= crisis <= span[-1]:
+                continue
             x_c = crisis.year + crisis.day_of_year / 365.25
             ax.axvline(x_c, color=MUTED, linestyle=":", linewidth=0.8)
             ax.text(x_c + 0.05, 0.82, label, color=MUTED, fontsize=7,
@@ -216,6 +224,7 @@ def plot_breach_heatmap(results: dict, out_path: pathlib.Path) -> None:
             f"{ticker}\n{len(bdf)} breaches\n({n_per_yr}/yr)",
             fontweight="bold", color=GOLD, fontsize=9,
         )
+        ax.xaxis.set_major_locator(mticker.MaxNLocator(integer=True))
         ax.set_yticks([])
         ax.set_ylim(0, 1)
         ax.grid(axis="x", alpha=0.3)
@@ -226,7 +235,7 @@ def plot_breach_heatmap(results: dict, out_path: pathlib.Path) -> None:
     fig.tight_layout()
     fig.savefig(out_path, dpi=150, bbox_inches="tight", facecolor=BG)
     plt.close(fig)
-    print(f"Saved → {out_path}")
+    print(f"Saved → {out_path.relative_to(ROOT)}")
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -276,7 +285,7 @@ def plot_var_compare(results: dict, out_path: pathlib.Path) -> None:
     fig.tight_layout()
     fig.savefig(out_path, dpi=150, bbox_inches="tight", facecolor=BG)
     plt.close(fig)
-    print(f"Saved → {out_path}")
+    print(f"Saved → {out_path.relative_to(ROOT)}")
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -294,7 +303,7 @@ def main():
             print(f"    ⚠  {ticker} failed: {exc}")
 
     plot_hill(         results, RESULTS_DIR / "hill_plots.png")
-    plot_breach_heatmap(results, RESULTS_DIR / "breach_heatmap.png")
+    plot_breach_timeline(results, RESULTS_DIR / "breach_timeline.png")
     plot_var_compare(  results, RESULTS_DIR / "var_compare.png")
     print("\nAll figures saved to results/")
 

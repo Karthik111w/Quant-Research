@@ -6,6 +6,7 @@ save them to results/prices_raw.csv.  Run this once; the CSV is the source
 of truth for every downstream script.
 """
 
+import argparse
 import pathlib
 import datetime
 import yfinance as yf
@@ -22,7 +23,9 @@ TICKERS = {
 }
 
 START = "2004-01-01"
-END   = datetime.date.today().isoformat()
+# Pinned so a fresh download reproduces the README numbers (data through 9 Oct 2026;
+# yfinance's end date is exclusive).  Run with --latest to extend to today instead.
+END   = "2026-10-10"
 
 RESULTS_DIR = pathlib.Path(__file__).parent.parent / "results"
 RESULTS_DIR.mkdir(exist_ok=True)
@@ -51,10 +54,17 @@ def fetch_prices(tickers: list[str], start: str, end: str) -> pd.DataFrame:
 
 
 def main():
-    print(f"Fetching {list(TICKERS)} from {START} to {END} …")
-    df = fetch_prices(list(TICKERS), START, END)
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--latest", action="store_true",
+                        help="download through today instead of the pinned END date "
+                             "(results will then differ slightly from the README)")
+    args = parser.parse_args()
+    end = datetime.date.today().isoformat() if args.latest else END
+
+    print(f"Fetching {list(TICKERS)} from {START} to {end} …")
+    df = fetch_prices(list(TICKERS), START, end)
     df.to_csv(OUT_CSV)
-    print(f"Saved {len(df)} rows × {len(df.columns)} cols → {OUT_CSV}")
+    print(f"Saved {len(df)} rows × {len(df.columns)} cols → {OUT_CSV.relative_to(RESULTS_DIR.parent)}")
     print(df.tail(3))
 
 
